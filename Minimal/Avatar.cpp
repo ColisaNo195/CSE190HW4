@@ -961,7 +961,8 @@ static void _runAvatar(
 // render avatar (each eye call this function once)
 static void renderAvatar(glm::mat4 view, glm::mat4 proj, const glm::vec3 eyeWorld) {
 	glDepthMask(GL_FALSE);
-	bool renderJoints = false; // TODO: doesn't throw bugs when false here
+	glDisable(GL_CULL_FACE); // necessary to display transparency
+	bool renderJoints = false; // doesn't throw bugs when false here
 	
 	if (_avatar && !_loadingAssets && !_waitingOnCombinedMesh)
 	{
@@ -977,7 +978,6 @@ static void renderAvatar(glm::mat4 view, glm::mat4 proj, const glm::vec3 eyeWorl
 	} 
 	glDepthMask(GL_TRUE);
 	glDepthFunc(GL_LEQUAL);
-	//glDepthFunc(GL_LESS);
 }
 
 static void _shutdownAvatar() {
