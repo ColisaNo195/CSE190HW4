@@ -625,6 +625,7 @@ protected:
 
   void draw() final override
   {
+	  /* avatar section tracing */
 	  // Compute how much time has elapsed since the last frame
 	  std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
 	  std::chrono::duration<float> deltaTime = currentTime - lastTime;
@@ -930,7 +931,8 @@ int main(int argc, char** argv)
   }
   result = ExampleApp().run();
   
-  //_shutdownAvatar();
+  // shut down avatar
+  _shutdownAvatar();
 
   ovr_Shutdown();
   return result;
