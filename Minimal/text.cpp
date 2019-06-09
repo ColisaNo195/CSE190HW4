@@ -5,6 +5,7 @@
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H  
@@ -26,7 +27,7 @@ static void init_font() {
 		std::cout << "ERROR::FREETYPE: Could not init FreeType Library" << std::endl;
 
 	FT_Face face;
-	if (FT_New_Face(ft, "../fonts/arial.ttf", 0, &face))
+	if (FT_New_Face(ft, "../fonts/joystix_monospace.ttf", 0, &face))
 		std::cout << "ERROR::FREETYPE: Failed to load font" << std::endl;
 
 	FT_Set_Pixel_Sizes(face, 0, 48);
@@ -90,28 +91,39 @@ static void init_font() {
 	FT_Done_FreeType(ft);
 }
 
-static void renderText(unsigned shader, std::string text, GLfloat x, GLfloat y, GLfloat scale, glm::vec3 color, glm::mat4 proj)
+static void renderText(unsigned shader, std::string text, GLfloat x, GLfloat y, GLfloat z, GLfloat scale, glm::vec3 color, glm::mat4 proj, glm::mat4 view)
 {
 	// Activate corresponding render state	
 	glUseProgram(shader);
 	glUniform3f(glGetUniformLocation(shader, "textColor"), color.x, color.y, color.z);
 	glActiveTexture(GL_TEXTURE0);
 	glBindVertexArray(fVAO);
-	
 	for (auto c = text.begin(); c != text.end(); c++)
 	{
 		Character ch = Characters[*c];
 
-		GLfloat xpos = x + ch.Bearing.x * scale;
+		GLfloat xpos = x;// +ch.Bearing.x * scale;
 		GLfloat ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
+		x = xpos + ch.Size.x * scale;
 
 		GLfloat w = ch.Size.x * scale;
 		GLfloat h = ch.Size.y * scale;
+
+		glm::mat4 modelview = view *glm::scale(
+			glm::translate(glm::mat4(1.0f),glm::vec3(xpos,ypos,z)),
+			glm::vec3(w,h,1.0));
+		glm::mat4 tmp = glm::mat4(1.0f);
+		GLuint uProjection = glGetUniformLocation(shader, "projection");
+		GLuint uModelview = glGetUniformLocation(shader, "modelview");
+		// Now send these values to the shader program
+		glUniformMatrix4fv(uProjection, 1, GL_FALSE, &proj[0][0]);
+		glUniformMatrix4fv(uModelview, 1, GL_FALSE, &modelview[0][0]);
+
 		// Update VBO for each character
 		GLfloat vertices[6][4] = {
 			{ xpos,     ypos + h,   0.0, 0.0 },
 			{ xpos,     ypos,       0.0, 1.0 },
-			{ xpos + w, ypos,       1.0, 1.0 },
+			{ xpos + w, ypos,       1.0 ,1.0 },
 
 			{ xpos,     ypos + h,   0.0, 0.0 },
 			{ xpos + w, ypos,       1.0, 1.0 },
@@ -119,6 +131,7 @@ static void renderText(unsigned shader, std::string text, GLfloat x, GLfloat y, 
 		};
 		// Render glyph texture over quad
 		glBindTexture(GL_TEXTURE_2D, ch.TextureID);
+		
 		// Update content of VBO memory
 		glBindBuffer(GL_ARRAY_BUFFER, fVBO);
 		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
@@ -126,8 +139,8 @@ static void renderText(unsigned shader, std::string text, GLfloat x, GLfloat y, 
 		// Render quad
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		// Now advance cursors for next glyph (note that advance is number of 1/64 pixels)
-		x += (ch.Advance >> 6) * scale; // Bitshift by 6 to get value in pixels (2^6 = 64)
+		//x += (ch.Advance >> 6) * scale; // Bitshift by 6 to get value in pixels (2^6 = 64)
 	}
 	glBindVertexArray(0);
-	glBindTexture(GL_TEXTURE_2D, 1);
+	glBindTexture(GL_TEXTURE_2D, 0);
 }

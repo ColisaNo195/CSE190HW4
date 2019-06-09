@@ -763,9 +763,9 @@ public:
 
     cube = std::make_unique<TexturedCube>("cube"); 
 
-	  // 10m wide sky box: size doesn't matter though
+	// 10m wide sky box: size doesn't matter though
     skybox = std::make_unique<Skybox>("skybox");
-	  skybox->toWorld = glm::scale(glm::mat4(1.0f), glm::vec3(5.0f));
+	skybox->toWorld = glm::scale(glm::mat4(1.0f), glm::vec3(5.0f));
   }
 
   void render(const glm::mat4& projection, const glm::mat4& view, const glm::vec3& viewPos)
@@ -807,6 +807,8 @@ class ExampleApp : public RiftApp
 
   // local status of game
   bool started = false;
+  bool ended = false; // true after a game ends
+  bool victory = true; // if the current player wins
   GLuint textshader;
 public:
   ExampleApp(rpc::client * c)
@@ -832,17 +834,14 @@ protected:
 	_initAvatarShader();
 
 	/* music */
-	Common_Init(&extradriverdata);
-	/*
-		Create a System object and initialize.
-	*/
+	//Common_Init(&extradriverdata);
+
+	//Create a System object and initialize.
 	result = FMOD::System_Create(&system);
 	result = system->getVersion(&version);
 	result = system->init(32, FMOD_INIT_NORMAL, extradriverdata);
 	
-	/*
-		load file here (Note: function uses ../media/ as file path)
-	*/
+	//load file here (Note: function uses ../media/ as file path)
 	result = system->createStream(Common_MediaPath("rainforest_ambience.wav"), FMOD_LOOP_NORMAL | FMOD_2D, 0, &sound);
 	result = sound->getNumSubSounds(&numsubsounds);
 	if (numsubsounds)
@@ -854,9 +853,7 @@ protected:
 		sound_to_play = sound;
 	}
 
-	/*
-		Play the sound.
-	*/
+	//Play the sound.
 	result = system->playSound(sound_to_play, 0, false, &channel);
 
   }
@@ -878,15 +875,33 @@ protected:
 
   void renderScene(const glm::mat4& projection, const glm::mat4& headPose, const glm::vec3& viewPos) override
   {
-	
 	glm::mat4 view = glm::inverse(headPose);
+
     scene->render(projection, view, viewPos);
+
+	// if game has started, render countdown time (Please render before Avatar)
+	if (started) {
+		int remain_time = client->call("remainTime").as<int>();
+		if (remain_time >= 0) {
+			renderText(textshader, std::to_string(remain_time), -1.2f, 0.8f, -0.7f, 0.05f, glm::vec3(0.5, 0.8f, 0.2f), projection, view);
+		}
+		// if the countdown time has past, updated status for started
+		else { started = false; ended = true; }
+	}
+	else if (ended) {
+		if (victory) {
+			renderText(textshader, "You win!", -1.2f, 0.8f, -0.7f, 0.04f, glm::vec3(0.5, 0.8f, 0.2f), projection, view);
+		}
+		else {
+			renderText(textshader, "Time up", -1.2f, 0.8f, -0.7f, 0.04f, glm::vec3(0.5, 0.8f, 0.2f), projection, view);
+		}
+		renderText(textshader, "Press A to restart", -2.0f, 0.3f, -1.0f, 0.02f, glm::vec3(0.5, 0.8f, 0.2f), projection, view);
+	}
 
 	// Render avatar
 	renderAvatar(view, projection, viewPos, false);
 
 	// Render opposing avatar through server
-	//auto result = client->call("mirrorPos", view, viewPos).get().as<std::pair<glm::mat4, glm::vec3>>();
 	avatarPos p;
 	p.view = glm::mat4(view);
 	p.viewPos = glm::vec3(viewPos);
@@ -894,21 +909,14 @@ protected:
 	p = client->call("mirrorPos", p).as<avatarPos>();
 	renderAvatar(p.view, projection, p.viewPos, true);
 
-	// if game has started, render countdown time
-	if (started) {
-		int remain_time = client->call("remainTime").as<int>();
-		if (remain_time >= 0) {
-			renderText(textshader, std::to_string(remain_time), 25.0f, 25.0f, 1.0f, glm::vec3(0.5, 0.8f, 0.2f),projection);
-		}
-		// if the countdown time has past, updated status for started
-		else { started = false; }
-	}
+	
   }
 
   void startGame() override
   {
 	  if (!started) {
 		  started = true;
+		  ended = false;
 		  client->call("startgame");
 	  }
   }
