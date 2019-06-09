@@ -93,6 +93,7 @@ static void init_font() {
 
 static void renderText(unsigned shader, std::string text, GLfloat x, GLfloat y, GLfloat z, GLfloat scale, glm::vec3 color, glm::mat4 proj, glm::mat4 view)
 {
+	glDisable(GL_CULL_FACE); // need the setting because skybox uses CULL_FACE
 	// Activate corresponding render state	
 	glUseProgram(shader);
 	glUniform3f(glGetUniformLocation(shader, "textColor"), color.x, color.y, color.z);
@@ -102,9 +103,12 @@ static void renderText(unsigned shader, std::string text, GLfloat x, GLfloat y, 
 	{
 		Character ch = Characters[*c];
 
-		GLfloat xpos = x;// +ch.Bearing.x * scale;
+		if (*c == ' ') {
+			x += 5 * scale; // manually add blank size
+		}
+		GLfloat xpos = x + ch.Bearing.x * scale * 0.2; // multiply additional scale here to make fonts closer
 		GLfloat ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
-		x = xpos + ch.Size.x * scale;
+		x = xpos + ch.Size.x * scale * 0.5; 
 
 		GLfloat w = ch.Size.x * scale;
 		GLfloat h = ch.Size.y * scale;
@@ -143,4 +147,5 @@ static void renderText(unsigned shader, std::string text, GLfloat x, GLfloat y, 
 	}
 	glBindVertexArray(0);
 	glBindTexture(GL_TEXTURE_2D, 0);
+	glDepthMask(GL_TRUE);
 }

@@ -735,6 +735,7 @@ protected:
 #include <vector>
 #include "shader.h"
 #include "Cube.h"
+#include "Cave.h" // to render UI
 
 // a class for building and rendering cubes
 class Scene
@@ -742,11 +743,14 @@ class Scene
   // Program
   std::vector<glm::mat4> instance_positions;
   GLuint instanceCount;
-  GLuint shaderID;
+  GLuint shaderID, caveID;
 
   std::unique_ptr<TexturedCube> cube;
   std::unique_ptr<Skybox> skybox;
 
+  std::unique_ptr<Cave> bomb;
+  std::vector<glm::mat4> bomb_positions;
+  int num_bomb = 3; // testing now; change to 3 later
   const unsigned int GRID_SIZE{5};
 
 public:
@@ -760,12 +764,21 @@ public:
 
     // Shader Program 
     shaderID = LoadShaders("skybox.vert", "skybox.frag");
+	caveID = LoadShaders("cave.vert", "cave.frag");
 
     cube = std::make_unique<TexturedCube>("cube"); 
 
 	// 10m wide sky box: size doesn't matter though
     skybox = std::make_unique<Skybox>("skybox");
 	skybox->toWorld = glm::scale(glm::mat4(1.0f), glm::vec3(5.0f));
+
+	// bomb logo (4 bombs max, considering the additional bomb)
+	char bomb_filename[] = "Bomb.png";
+	bomb = std::make_unique<Cave>(&bomb_filename[0]);
+	bomb_positions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.8f, -1.0f)));
+	bomb_positions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, -1.0f)));
+	bomb_positions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.2f, -1.0f)));
+	bomb_positions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, -0.1f, -1.0f)));
   }
 
   void render(const glm::mat4& projection, const glm::mat4& view, const glm::vec3& viewPos)
@@ -778,8 +791,15 @@ public:
       cube->draw(shaderID, projection, view);
     }
 
+	// render bomb icons
+	for (int i = 0; i < num_bomb; i++)
+	{
+		bomb->toWorld = bomb_positions[i] * glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
+		bomb->draw(caveID, projection, view);
+	}
+
 	// Render Skybox : remove view translation
-	//skybox->draw(shaderID, projection, view);
+	skybox->draw(shaderID, projection, view);
   }
 };
 
@@ -809,7 +829,13 @@ class ExampleApp : public RiftApp
   bool started = false;
   bool ended = false; // true after a game ends
   bool victory = true; // if the current player wins
+  int freeze = 0; // freeze time
   GLuint textshader;
+
+  // text color
+  glm::vec3 textcolor = glm::vec3(0.16f, 0.42f, 1.0f);
+  glm::vec3 freezecolor = glm::vec3(0.67f, 0.9f, 0.93f);
+  glm::vec3 wincolor = glm::vec3(1.0f, 0.93f, 0.0f);
 public:
   ExampleApp(rpc::client * c)
   {
@@ -834,15 +860,13 @@ protected:
 	_initAvatarShader();
 
 	/* music */
-	//Common_Init(&extradriverdata);
-
 	//Create a System object and initialize.
 	result = FMOD::System_Create(&system);
 	result = system->getVersion(&version);
 	result = system->init(32, FMOD_INIT_NORMAL, extradriverdata);
 	
 	//load file here (Note: function uses ../media/ as file path)
-	result = system->createStream(Common_MediaPath("rainforest_ambience.wav"), FMOD_LOOP_NORMAL | FMOD_2D, 0, &sound);
+	result = system->createStream(Common_MediaPath("Hangin-Ten_Looping.mp3"), FMOD_LOOP_NORMAL | FMOD_2D, 0, &sound);
 	result = sound->getNumSubSounds(&numsubsounds);
 	if (numsubsounds)
 	{
@@ -852,10 +876,6 @@ protected:
 	{
 		sound_to_play = sound;
 	}
-
-	//Play the sound.
-	result = system->playSound(sound_to_play, 0, false, &channel);
-
   }
 
   void shutdownGl() override
@@ -883,19 +903,26 @@ protected:
 	if (started) {
 		int remain_time = client->call("remainTime").as<int>();
 		if (remain_time >= 0) {
-			renderText(textshader, std::to_string(remain_time), -1.2f, 0.8f, -0.7f, 0.05f, glm::vec3(0.5, 0.8f, 0.2f), projection, view);
+			renderText(textshader, std::to_string(remain_time), -0.5f, 0.6f, -0.7f, 0.02f, textcolor, projection, view);
 		}
 		// if the countdown time has past, updated status for started
-		else { started = false; ended = true; }
+		else { 
+			started = false;
+			ended = true;
+			result = channel->setPaused(true);
+		}
 	}
 	else if (ended) {
 		if (victory) {
-			renderText(textshader, "You win!", -1.2f, 0.8f, -0.7f, 0.04f, glm::vec3(0.5, 0.8f, 0.2f), projection, view);
+			renderText(textshader, "You win", -1.2f, 0.6f, -0.7f, 0.025f, wincolor, projection, view);
 		}
 		else {
-			renderText(textshader, "Time up", -1.2f, 0.8f, -0.7f, 0.04f, glm::vec3(0.5, 0.8f, 0.2f), projection, view);
+			renderText(textshader, "Time up", -1.1f, 0.6f, -0.7f, 0.02f, textcolor, projection, view);
 		}
-		renderText(textshader, "Press A to restart", -2.0f, 0.3f, -1.0f, 0.02f, glm::vec3(0.5, 0.8f, 0.2f), projection, view);
+		renderText(textshader, "Press A to restart", -1.6f, 0.0f, -1.0f, 0.015f, textcolor, projection, view);
+	}
+	else {
+		renderText(textshader, "Press A to start", -1.5f, 0.0f, -1.0f, 0.015f, textcolor, projection, view);
 	}
 
 	// Render avatar
@@ -918,6 +945,8 @@ protected:
 		  started = true;
 		  ended = false;
 		  client->call("startgame");
+		  //start playing music
+		  result = system->playSound(sound_to_play, 0, false, &channel);
 	  }
   }
 };

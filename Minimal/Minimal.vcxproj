@@ -123,7 +123,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(SolutionDir)Include\fmod;$(SolutionDir)Include\OVR_Platform;$(SolutionDir)Include\AL;$(SolutionDir)Include\SDL2;$(SolutionDir)Include\rpc;$(SolutionDir)Include\LibOVR;$(MSBuildThisFileDirectory)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Include\lpng1637;$(SolutionDir)Include\fmod;$(SolutionDir)Include\OVR_Platform;$(SolutionDir)Include\AL;$(SolutionDir)Include\SDL2;$(SolutionDir)Include\rpc;$(SolutionDir)Include\LibOVR;$(MSBuildThisFileDirectory)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PreprocessorDefinitions>_MBCS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -138,8 +138,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Avatar.cpp" />
+    <ClCompile Include="Cave.cpp" />
     <ClCompile Include="common_platform.cpp" />
     <ClCompile Include="Cube.cpp" />
+    <ClCompile Include="lodepng.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="shader.cpp" />
@@ -148,6 +150,8 @@
     <ClCompile Include="TexturedCube.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="cave.frag" />
+    <None Include="cave.vert" />
     <None Include="font.frag" />
     <None Include="font.vert" />
     <None Include="packages.config" />
@@ -157,9 +161,11 @@
     <None Include="skybox.vert" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Cave.h" />
     <ClInclude Include="common.h" />
     <ClInclude Include="common_platform.h" />
     <ClInclude Include="Cube.h" />
+    <ClInclude Include="lodepng.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="serverData.h" />
     <ClInclude Include="shader.h" />

@@ -42,6 +42,12 @@
     <ClCompile Include="text.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Cave.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="lodepng.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -61,6 +67,12 @@
       <Filter>Resource Files</Filter>
     </None>
     <None Include="font.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="cave.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="cave.vert">
       <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>
@@ -87,6 +99,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="common_platform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Cave.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="lodepng.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
