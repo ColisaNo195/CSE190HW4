@@ -16,8 +16,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ************************************************************************************/
-#include "pch.h"
-#include "rpc/client.h"// Execute our example class
+#include "pch.h" // for server
+#include "rpc/client.h"
+#include "serverData.h"
 
 #include "Avatar.cpp" // Oculus Avatar
 
@@ -25,6 +26,7 @@ limitations under the License.
 #include <memory>
 #include <exception>
 #include <algorithm>
+#include <string>
 
 #include <Windows.h>
 
@@ -623,6 +625,8 @@ protected:
     GlfwApp::onKey(key, scancode, action, mods);
   }
 
+  bool pressA = false;
+
   void draw() final override
   {
 	  /* avatar section tracing */
@@ -661,6 +665,17 @@ protected:
 
 	  _runAvatar(deltaSeconds, hmd, inputStateLeft, inputStateRight, playbackPacket, &playbackTime); // end of avatar update
 
+	  ovrInputState inputState;
+	  if (OVR_SUCCESS(ovr_GetInputState(_session, ovrControllerType_Touch, &inputState))) {
+		  // start game
+		  if (inputState.Buttons & ovrButton_A) {
+			  if (pressButton(pressA)) {
+				  startGame();
+			  }
+		  }
+		  else { pressA = false; }
+	  }
+
     ovrPosef eyePoses[2];
     ovr_GetEyePoses(_session, frame, true, _viewScaleDesc.HmdToEyePose, eyePoses, &_sceneLayer.SensorSampleTime);
 
@@ -695,7 +710,19 @@ protected:
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
   }
 
+  // allow triggering the status once when a button is pressed.
+  bool pressButton(bool& button) {
+	  if (!button) {
+		  button = true;
+		  return true;
+	  }
+	  else {
+		  return false;
+	  }
+  }
+
   virtual void renderScene(const glm::mat4& projection, const glm::mat4& headPose, const glm::vec3& viewPos) = 0;
+  virtual void startGame() = 0;
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -739,10 +766,6 @@ public:
 	  // 10m wide sky box: size doesn't matter though
     skybox = std::make_unique<Skybox>("skybox");
 	  skybox->toWorld = glm::scale(glm::mat4(1.0f), glm::vec3(5.0f));
-
-	  // initialize avatar
-	  _initAvatar();
-	  _initAvatarShader();
   }
 
   void render(const glm::mat4& projection, const glm::mat4& view, const glm::vec3& viewPos)
@@ -757,32 +780,38 @@ public:
 
 	// Render Skybox : remove view translation
 	//skybox->draw(shaderID, projection, view);
-	
-	// Render avatar
-	renderAvatar(view, projection, viewPos);
   }
 };
 
 // for sound effect
-#include "al.h" 
-#include "alc.h" 
+#include "fmod.hpp"
+#include "common.h"
+
+// for font display
+#include "text.cpp"
 
 // An example application that renders a simple cube
 class ExampleApp : public RiftApp
 {
   std::shared_ptr<Scene> scene;
+  rpc::client * client;
 
-  // sound
-  /*ALCdevice *device;
-  ALCcontext *context;
-  ALuint source, buffer, frequency;
-  ALenum format = 0;
-  ALint source_state;
-  ALvoid * buf;*/
+  // initialize sound
+  FMOD::System     *system;
+  FMOD::Sound      *sound, *sound_to_play;
+  FMOD::Channel    *channel = 0;
+  FMOD_RESULT       result;
+  unsigned int      version;
+  void             *extradriverdata = 0;
+  int               numsubsounds;
 
+  // local status of game
+  bool started = false;
+  GLuint textshader;
 public:
-  ExampleApp()
+  ExampleApp(rpc::client * c)
   {
+	  client = c;
   }
 
 protected:
@@ -793,121 +822,95 @@ protected:
     glEnable(GL_DEPTH_TEST);
     ovr_RecenterTrackingOrigin(_session);
     scene = std::shared_ptr<Scene>(new Scene());
+
+	// intialize fonts
+	init_font();
+	textshader = LoadShaders("font.vert", "font.frag");
+
+	// initialize avatar
+	_initAvatar();
+	_initAvatarShader();
+
+	/* music */
+	Common_Init(&extradriverdata);
 	/*
-	// source: https://www.youtube.com/watch?v=V83Ja4FmrqE
-	FILE *fp = NULL;
-	fp = fopen("rainforest_ambience.wav","r");
-
-	char type[4];
-	DWORD size, chunkSize;
-	short formatType, channels;
-	DWORD sampleRate, avgBytesPerSec;
-	short bytesPerSample, bitsPerSample;
-	DWORD dataSize;
-	list_audio_devices(alcGetString(NULL, ALC_DEVICE_SPECIFIER));
-	fread(type, sizeof(char), 4, fp);   std::cout << std::endl << "Type: " << type[0] << type[1] << type[2] << type[3] << std::endl;
-	fread(&chunkSize, sizeof(DWORD), 1, fp); std::cout << chunkSize << std::endl;
-	fread(&formatType, sizeof(short), 1, fp);
-	fread(&channels, sizeof(short), 1, fp);
-	fread(&sampleRate, sizeof(DWORD), 1, fp);
-	fread(&avgBytesPerSec, sizeof(DWORD), 1, fp);
-	fread(&bytesPerSample, sizeof(short), 1, fp);
-	fread(&bitsPerSample, sizeof(short), 1, fp);
-	fread(type, sizeof(char), 4, fp);
-	
-	fread(&dataSize, sizeof(DWORD), 1, fp);
-	buf = new unsigned char[dataSize];
-	fread(buf, sizeof(BYTE), dataSize, fp);
-	fclose(fp);
-
-	device = alcOpenDevice(NULL);
-	context = alcCreateContext(device, NULL);
-	alcMakeContextCurrent(context);
-
-	frequency = sampleRate;
-	alGenBuffers(1, &buffer);
-	alGenSources(1, &source);
-
-	if (bitsPerSample == 8) {
-		if (channels == 1) {
-			format = AL_FORMAT_MONO8;
-		}
-		else if (channels == 2) {
-			format = AL_FORMAT_STEREO8;
-		}
-	}
-	else if (bitsPerSample == 16) {
-		if (channels == 1) {
-			format = AL_FORMAT_MONO16;
-		}
-		else if (channels == 2) {
-			format = AL_FORMAT_STEREO16;
-		}
-	}
-	alBufferData(buffer, format, buf, dataSize, frequency);
-
-	ALfloat sourcePos[] = { 0.0, 0.0, 0.0 };
-	ALfloat sourceVel[] = { 0.0, 0.0, 0.0 };
-	ALfloat listenerPos[] = { 0.0, 0.0, 0.0 };
-	ALfloat listenerVel[] = { 0.0, 0.0, 0.0 };
-	ALfloat listenerOri[] = { 0.0, 0.0, -1.0, 0.0, 1.0, 0.0 }; // lookAt and Up respectively
-
-	// listener
-	alListenerfv(AL_POSITION, listenerPos);
-	alListenerfv(AL_VELOCITY, listenerVel);
-	alListenerfv(AL_ORIENTATION, listenerOri);
-
-	// source
-	alSourcei(source, AL_BUFFER, buffer); // bind source to buffer
-	alSourcef(source, AL_PITCH, 1.0f);
-	alSourcef(source, AL_GAIN, 1.0f);
-	alSourcefv(source, AL_POSITION, sourcePos);
-	alSourcefv(source, AL_VELOCITY, sourceVel);
-	alSourcei(source, AL_LOOPING, AL_TRUE);
+		Create a System object and initialize.
 	*/
+	result = FMOD::System_Create(&system);
+	result = system->getVersion(&version);
+	result = system->init(32, FMOD_INIT_NORMAL, extradriverdata);
 	
-  }
+	/*
+		load file here (Note: function uses ../media/ as file path)
+	*/
+	result = system->createStream(Common_MediaPath("rainforest_ambience.wav"), FMOD_LOOP_NORMAL | FMOD_2D, 0, &sound);
+	result = sound->getNumSubSounds(&numsubsounds);
+	if (numsubsounds)
+	{
+		sound->getSubSound(0, &sound_to_play);
+	}
+	else
+	{
+		sound_to_play = sound;
+	}
 
-  static void list_audio_devices(const ALCchar *devices)
-  {
-	  const ALCchar *device = devices, *next = devices + 1;
-	  size_t len = 0;
+	/*
+		Play the sound.
+	*/
+	result = system->playSound(sound_to_play, 0, false, &channel);
 
-	  fprintf(stdout, "Devices list:\n");
-	  fprintf(stdout, "----------\n");
-	  while (device && *device != '\0' && next && *next != '\0') {
-		  fprintf(stdout, "%s\n", device);
-		  len = strlen(device);
-		  device += (len + 1);
-		  next += (len + 2);
-	  }
-	  fprintf(stdout, "----------\n");
   }
 
   void shutdownGl() override
   {
     scene.reset();
 
-	/*delete[] buf;
-	alDeleteSources(1, &source);
-	alDeleteBuffers(1, &buffer);
-	alcMakeContextCurrent(NULL);
-	alcDestroyContext(context);
-	alcCloseDevice(device);*/
+	// shut down avatar
+	_shutdownAvatar();
+	
+	// shut down music
+	result = sound->release();  /* Release the parent, not the sound that was retrieved with getSubSound. */
+	result = system->close();
+	result = system->release();
+	Common_Close();
+
   }
 
   void renderScene(const glm::mat4& projection, const glm::mat4& headPose, const glm::vec3& viewPos) override
   {
-	  // play the sound
-	  /*alSourcePlay(source);
-	  alGetSourcei(source, AL_SOURCE_STATE, &source_state);
-	  std::cout << (source_state == AL_INITIAL); //TODO: source_state == AL_INITIAL
-	  while (source_state == AL_PLAYING) {
-		  std::cout << "spam"; // TODO: did not come in
-		  alGetSourcei(source, AL_SOURCE_STATE, &source_state);
-	  }*/
+	
+	glm::mat4 view = glm::inverse(headPose);
+    scene->render(projection, view, viewPos);
 
-    scene->render(projection, glm::inverse(headPose), viewPos);
+	// Render avatar
+	renderAvatar(view, projection, viewPos, false);
+
+	// Render opposing avatar through server
+	//auto result = client->call("mirrorPos", view, viewPos).get().as<std::pair<glm::mat4, glm::vec3>>();
+	avatarPos p;
+	p.view = glm::mat4(view);
+	p.viewPos = glm::vec3(viewPos);
+	
+	p = client->call("mirrorPos", p).as<avatarPos>();
+	renderAvatar(p.view, projection, p.viewPos, true);
+
+	// if game has started, render countdown time
+	if (started) {
+		int remain_time = client->call("remainTime").as<int>();
+		if (remain_time >= 0) {
+			renderText(textshader, std::to_string(remain_time), 25.0f, 25.0f, 1.0f, glm::vec3(0.5, 0.8f, 0.2f),projection);
+		}
+		// if the countdown time has past, updated status for started
+		else { started = false; }
+	}
+  }
+
+  void startGame() override
+  {
+	  if (!started) {
+		  started = true;
+		  client->call("startgame");
+	  }
   }
 };
 
@@ -929,11 +932,8 @@ int main(int argc, char** argv)
   {
     FAIL("Failed to initialize the Oculus SDK");
   }
-  result = ExampleApp().run();
-  
-  // shut down avatar
-  _shutdownAvatar();
-
+  result = ExampleApp(&c).run();
+ 
   ovr_Shutdown();
   return result;
 }

@@ -1,3 +1,4 @@
+// the .cpp file is adapted from Oculus Avatar sample program, mirror.cpp
 #pragma once
 
 #include <OVR_Avatar.h>
@@ -959,22 +960,22 @@ static void _runAvatar(
 
 
 // render avatar (each eye call this function once)
-static void renderAvatar(glm::mat4 view, glm::mat4 proj, const glm::vec3 eyeWorld) {
+static void renderAvatar(glm::mat4 view, glm::mat4 proj, const glm::vec3 eyeWorld, bool opposite) {
 	glDepthMask(GL_FALSE);
 	glDisable(GL_CULL_FACE); // necessary to display transparency
 	bool renderJoints = false; // doesn't throw bugs when false here
 	
 	if (_avatar && !_loadingAssets && !_waitingOnCombinedMesh)
 	{
-		_renderAvatar(_avatar, ovrAvatarVisibilityFlag_FirstPerson, view, proj, eyeWorld, renderJoints);
-		
-		// render mirror head (from sample code)
-		glm::vec4 reflectionPlane = glm::vec4(0.0, 0.0, -1.0, 0.0);
-		glm::mat4 reflection = _computeReflectionMatrix(reflectionPlane);
-
-		glFrontFace(GL_CW);
-		_renderAvatar(_avatar, ovrAvatarVisibilityFlag_ThirdPerson, view * reflection, proj, glm::vec3(reflection * glm::vec4(eyeWorld, 1.0f)), renderJoints);
-		glFrontFace(GL_CCW);
+		if (!opposite) {
+			_renderAvatar(_avatar, ovrAvatarVisibilityFlag_FirstPerson, view, proj, eyeWorld, renderJoints);
+		}
+		else {
+			// assume external functions have handled conversion, so the input in current matrix
+			glFrontFace(GL_CW);
+			_renderAvatar(_avatar, ovrAvatarVisibilityFlag_ThirdPerson, view, proj, eyeWorld, renderJoints);
+			glFrontFace(GL_CCW);
+		}
 	} 
 	glDepthMask(GL_TRUE);
 	glDepthFunc(GL_LEQUAL);

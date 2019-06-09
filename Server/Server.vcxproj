@@ -166,6 +166,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\Minimal\serverData.h" />
     <ClInclude Include="..\Shared\Player.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
