@@ -626,7 +626,14 @@ protected:
   }
 
   bool pressA = false;
-
+  bool pressB = false;
+  bool right_hand_triggered = false;
+  bool right_index_triggered = false;
+  bool left_hand_triggered = false;
+  bool left_index_triggered = false;
+  bool right_hand_changed = false;
+  bool grabbed_right = false;
+  bool grabbed_left = false;
   void draw() final override
   {
 	  /* avatar section tracing */
@@ -674,6 +681,56 @@ protected:
 			  }
 		  }
 		  else { pressA = false; }
+
+		  if (inputState.IndexTrigger[ovrHand_Right] > 0.1) {
+			  if (pressButton(right_index_triggered)) {
+				  createCube(rightP, glm::vec3(0.05f));
+			  }
+		  }
+		  else {
+			  right_index_triggered = false;
+		  }
+
+		  if (inputState.IndexTrigger[ovrHand_Left] > 0.1) {
+			  if (pressButton(left_index_triggered)) {
+				  createCube(leftP, glm::vec3(0.05f));
+			  }
+		  }
+		  else {
+			  left_index_triggered = false;
+		  }
+
+		  if (inputState.Buttons & ovrButton_B) {
+			  if (pressButton(pressB)) {
+				  createBomb(rightP, 0.05f);
+			  }
+		  }
+		  else {
+			  pressB = false;
+		  }
+		  
+		  if (inputState.HandTrigger[ovrHand_Right] > 0.1) {
+			  if (pressButton(right_hand_triggered)) {
+				  grabbed_right = initiateRightGrab(rightP, rightQ);
+			  }
+			  else if(grabbed_right){
+				  moveRightGrab(rightP, rightQ);
+			  }
+		  }
+		  else {
+			  right_hand_triggered = false;
+		  }
+		  if (inputState.HandTrigger[ovrHand_Left] > 0.1) {
+			  if (pressButton(left_hand_triggered)) {
+				  grabbed_left = initiateLeftGrab(leftP, leftQ);
+			  }
+			  else if (grabbed_left) {
+				  moveLeftGrab(leftP, leftQ);
+			  }
+		  }
+		  else {
+			  left_hand_triggered = false;
+		  }
 	  }
 
     ovrPosef eyePoses[2];
@@ -723,6 +780,12 @@ protected:
 
   virtual void renderScene(const glm::mat4& projection, const glm::mat4& headPose, const glm::vec3& viewPos) = 0;
   virtual void startGame() = 0;
+  virtual void createCube(glm::vec3 position, glm::vec3 scale) = 0;
+  virtual void createBomb(glm::vec3 position, float scale) = 0;
+  virtual bool initiateRightGrab(glm::vec3 hand_pos, glm::quat hand_rot) = 0;
+  virtual void moveRightGrab(glm::vec3 hand_pos, glm::quat hand_rot) = 0;
+  virtual bool initiateLeftGrab(glm::vec3 hand_pos, glm::quat hand_rot) = 0;
+  virtual void moveLeftGrab(glm::vec3 hand_pos, glm::quat hand_rot) = 0;
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -735,7 +798,8 @@ protected:
 #include <vector>
 #include "shader.h"
 #include "Cube.h"
-#include "Cave.h" // to render UI
+#include "ObjObject.h"
+#include "Cave.h"
 
 // a class for building and rendering cubes
 class Scene
@@ -743,20 +807,27 @@ class Scene
   // Program
   std::vector<glm::mat4> instance_positions;
   GLuint instanceCount;
-  GLuint shaderID, caveID;
+  GLuint shaderID, shaderID1, caveID;
 
+  std::unique_ptr<TexturedCube> table;
   std::unique_ptr<TexturedCube> cube;
+  std::unique_ptr<OBJObject> bomb;
   std::unique_ptr<Skybox> skybox;
 
-  std::unique_ptr<Cave> bomb;
+  std::unique_ptr<Cave> bomb_icon;
   std::vector<glm::mat4> bomb_positions;
-  int num_bomb = 3; // testing now; change to 3 later
+  int num_bomb_left = 0;
+
+  glm::vec3 table_pos;
+  glm::vec3 table_scale;
+  rpc::client* client;
   const unsigned int GRID_SIZE{5};
 
 public:
-  Scene()
+  Scene(rpc::client* c)
   {
     // Create two cube
+	client = c;
     instance_positions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -0.3)));
     instance_positions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -0.9)));
 
@@ -764,42 +835,84 @@ public:
 
     // Shader Program 
     shaderID = LoadShaders("skybox.vert", "skybox.frag");
+	shaderID1 = LoadShaders("shader.vert", "shader.frag");
 	caveID = LoadShaders("cave.vert", "cave.frag");
-
-    cube = std::make_unique<TexturedCube>("cube"); 
-
+	table_pos = glm::vec3(0, -0.5f, -0.5f);
+	table_scale = glm::vec3(0.5f, 0.1f, 0.5f);
+    table = std::make_unique<TexturedCube>("cube-wood"); 
+	cube = std::make_unique<TexturedCube>("cube");
+	bomb = std::make_unique<OBJObject>("art/bombone.obj");
+	table->toWorld = glm::translate(glm::mat4(), table_pos) * glm::scale(glm::mat4(1.0f), table_scale);
+	vector3 table_pos_vec3, table_scale_vec3;
+	table_pos_vec3.vector = table_pos;
+	table_scale_vec3.vector = table_scale;
+	client->call("createTable", table_pos_vec3, table_scale_vec3);
 	// 10m wide sky box: size doesn't matter though
     skybox = std::make_unique<Skybox>("skybox");
 	skybox->toWorld = glm::scale(glm::mat4(1.0f), glm::vec3(5.0f));
 
-	// bomb logo (4 bombs max, considering the additional bomb)
+	// bomb icon (4 bombs max, considering the additional bomb)
 	char bomb_filename[] = "Bomb.png";
-	bomb = std::make_unique<Cave>(&bomb_filename[0]);
+	bomb_icon = std::make_unique<Cave>(&bomb_filename[0]);
 	bomb_positions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.8f, -1.0f)));
 	bomb_positions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, -1.0f)));
 	bomb_positions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.2f, -1.0f)));
 	bomb_positions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, -0.1f, -1.0f)));
+
   }
 
   void render(const glm::mat4& projection, const glm::mat4& view, const glm::vec3& viewPos)
   {
+	  int num_cube = client->call("getCubeNum").as<int>();
+	  int num_bomb = client->call("getBombNum").as<int>();
+	  std::vector<glm::vec3> curr_cube_pos;
+	  std::vector<glm::quat> curr_cube_rot;
+	  std::vector<glm::vec3> curr_bomb_pos;
+	  std::vector<glm::quat> curr_bomb_rot;
+	  for (int i = 0; i < num_cube; ++i) {
+		  vector3 one_cube_pos = client->call("getCubePos", i).as<vector3>();
+		  curr_cube_pos.push_back(one_cube_pos.vector);
+		  quaterion one_cube_rot = client->call("getCubeRot", i).as<quaterion>();
+		  curr_cube_rot.push_back(one_cube_rot.quaterion);
+	  }
+
+	  for (int i = 0; i < num_bomb; ++i) {
+		  vector3 one_bomb_pos = client->call("getBombPos", i).as<vector3>();
+		  curr_bomb_pos.push_back(one_bomb_pos.vector);
+		  quaterion one_bomb_rot = client->call("getBombRot", i).as<quaterion>();
+		  curr_bomb_rot.push_back(one_bomb_rot.quaterion);
+	  }
     // Render two cubes
-    for (int i = 0; i < instanceCount; i++)
-    {
+	  for (int i = 0; i < curr_cube_pos.size(); ++i)
+		{
       // Scale to 20cm: 200cm * 0.1
-      cube->toWorld = instance_positions[i] * glm::scale(glm::mat4(1.0f), glm::vec3(0.1f));
-      cube->draw(shaderID, projection, view);
-    }
+		  cube->toWorld = glm::translate(glm::mat4(1.0f), curr_cube_pos[i]) * glm::scale(glm::mat4(1.0f), glm::vec3(0.05f)) * glm::toMat4(curr_cube_rot[i]);
+		  cube->draw(shaderID, projection, view);
+		}
+	  for (int i = 0; i < curr_bomb_pos.size(); ++i)
+	  {
+		  // Scale to 20cm: 200cm * 0.1
+		  bomb->toWorld = glm::translate(glm::mat4(1.0f), curr_bomb_pos[i]) * glm::scale(glm::mat4(1.0f), glm::vec3(0.05f)) * glm::toMat4(curr_bomb_rot[i]);
+		  bomb->draw(shaderID1, projection, view);
+	  }
+	  curr_cube_pos.clear();
+	  curr_bomb_pos.clear();
+    table->draw(shaderID, projection, view);
 
 	// render bomb icons
-	for (int i = 0; i < num_bomb; i++)
+	for (int i = 0; i < num_bomb_left; i++)
 	{
-		bomb->toWorld = bomb_positions[i] * glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
-		bomb->draw(caveID, projection, view);
+		bomb_icon->toWorld = bomb_positions[i] * glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
+		bomb_icon->draw(caveID, projection, view);
 	}
+
 
 	// Render Skybox : remove view translation
 	skybox->draw(shaderID, projection, view);
+  }
+
+  void updateBombLeft(int bombleft) {
+	  num_bomb_left = bombleft;
   }
 };
 
@@ -829,13 +942,14 @@ class ExampleApp : public RiftApp
   bool started = false;
   bool ended = false; // true after a game ends
   bool victory = true; // if the current player wins
-  int freeze = 0; // freeze time
   GLuint textshader;
+  int num_bomb_left = 3;
 
   // text color
   glm::vec3 textcolor = glm::vec3(0.16f, 0.42f, 1.0f);
   glm::vec3 freezecolor = glm::vec3(0.67f, 0.9f, 0.93f);
   glm::vec3 wincolor = glm::vec3(1.0f, 0.93f, 0.0f);
+
 public:
   ExampleApp(rpc::client * c)
   {
@@ -849,7 +963,7 @@ protected:
     glClearColor(0.2f, 0.2f, 0.2f, 0.0f);
     glEnable(GL_DEPTH_TEST);
     ovr_RecenterTrackingOrigin(_session);
-    scene = std::shared_ptr<Scene>(new Scene());
+    scene = std::shared_ptr<Scene>(new Scene(client));
 
 	// intialize fonts
 	init_font();
@@ -903,26 +1017,27 @@ protected:
 	if (started) {
 		int remain_time = client->call("remainTime").as<int>();
 		if (remain_time >= 0) {
-			renderText(textshader, std::to_string(remain_time), -0.5f, 0.6f, -0.7f, 0.02f, textcolor, projection, view);
+			renderText(textshader, std::to_string(remain_time), -0.25f, 0.6f, -0.7f, 0.015f, textcolor, projection, view);
 		}
 		// if the countdown time has past, updated status for started
-		else { 
+		else {
 			started = false;
 			ended = true;
-			result = channel->setPaused(true);
+			victory = client->call("result").as<bool>();
+			result = channel->setPaused(true); // stop music
 		}
 	}
 	else if (ended) {
 		if (victory) {
-			renderText(textshader, "You win", -1.2f, 0.6f, -0.7f, 0.025f, wincolor, projection, view);
+			renderText(textshader, "You win", -0.8f, 0.6f, -0.7f, 0.015f, wincolor, projection, view);
 		}
 		else {
-			renderText(textshader, "Time up", -1.1f, 0.6f, -0.7f, 0.02f, textcolor, projection, view);
+			renderText(textshader, "Time up", -0.7f, 0.6f, -0.7f, 0.012f, textcolor, projection, view);
 		}
-		renderText(textshader, "Press A to restart", -1.6f, 0.0f, -1.0f, 0.015f, textcolor, projection, view);
+		renderText(textshader, "Press A to restart", -1.05f, 0.0f, -1.0f, 0.01f, textcolor, projection, view);
 	}
 	else {
-		renderText(textshader, "Press A to start", -1.5f, 0.0f, -1.0f, 0.015f, textcolor, projection, view);
+		renderText(textshader, "Press A to start", -1.0f, 0.0f, -1.0f, 0.01f, textcolor, projection, view);
 	}
 
 	// Render avatar
@@ -935,8 +1050,6 @@ protected:
 	
 	p = client->call("mirrorPos", p).as<avatarPos>();
 	renderAvatar(p.view, projection, p.viewPos, true);
-
-	
   }
 
   void startGame() override
@@ -945,9 +1058,73 @@ protected:
 		  started = true;
 		  ended = false;
 		  client->call("startgame");
+		  num_bomb_left = 3;
+		  scene->updateBombLeft(num_bomb_left);
 		  //start playing music
 		  result = system->playSound(sound_to_play, 0, false, &channel);
 	  }
+  }
+  void createCube(glm::vec3 position, glm::vec3 scale) override
+  {
+	  if (!started || ended) { return; }
+	  vector3 cube_pos, cube_scl;
+	  cube_pos.vector = position;
+	  cube_scl.vector = scale;
+	  client->call("createCube", cube_pos, cube_scl);
+  }
+  
+  void createBomb(glm::vec3 position, float scale) override
+  {
+	  if (!started || ended) { return; }
+	  if (num_bomb_left) {
+		  vector3 bomb_pos;
+		  bomb_pos.vector = position;
+		  client->call("createBomb", bomb_pos, scale);
+		  scene->updateBombLeft(--num_bomb_left);
+	  }
+  }
+
+  bool initiateRightGrab(glm::vec3 hand_pos, glm::quat hand_rot) override
+  {
+	  if (!started || ended) { return false; }
+	  vector3 pos;
+	  pos.vector = hand_pos;
+	  quaterion rot;
+	  rot.quaterion = hand_rot;
+	  bool grabbed = client->call("initiateRightGrab", pos, rot).as<bool>();
+	  return grabbed;
+	  
+  }
+
+  void moveRightGrab(glm::vec3 hand_pos, glm::quat hand_rot) override
+  {
+	  if (!started || ended) { return; }
+	  vector3 pos;
+	  pos.vector = hand_pos;
+	  quaterion rot;
+	  rot.quaterion = hand_rot;
+	  client->call("moveRightGrab", pos, rot);
+  }
+
+  bool initiateLeftGrab(glm::vec3 hand_pos, glm::quat hand_rot) override
+  {
+	  if (!started || ended) { return false; }
+	  vector3 pos;
+	  pos.vector = hand_pos;
+	  quaterion rot;
+	  rot.quaterion = hand_rot;
+	  bool grabbed = client->call("initiateLeftGrab", pos, rot).as<bool>();
+	  return grabbed;
+  }
+
+  void moveLeftGrab(glm::vec3 hand_pos, glm::quat hand_rot) override
+  {
+	  if (!started || ended) { return; }
+	  vector3 pos;
+	  pos.vector = hand_pos;
+	  quaterion rot;
+	  rot.quaterion = hand_rot;
+	  client->call("moveLeftGrab", pos, rot);
   }
 };
 

@@ -963,6 +963,7 @@ static void _runAvatar(
 static void renderAvatar(glm::mat4 view, glm::mat4 proj, const glm::vec3 eyeWorld, bool opposite) {
 	glDepthMask(GL_FALSE);
 	glDisable(GL_CULL_FACE); // necessary to display transparency
+	glEnable(GL_BLEND);
 	bool renderJoints = false; // doesn't throw bugs when false here
 	
 	if (_avatar && !_loadingAssets && !_waitingOnCombinedMesh)
