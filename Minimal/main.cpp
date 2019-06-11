@@ -942,6 +942,7 @@ class ExampleApp : public RiftApp
 
   // local status of game
   bool started = false;
+  bool bothstarted = false; // wait until both players press A to start
   bool ended = false; // true after a game ends
   bool victory = true; // if the current player wins
   GLuint textshader;
@@ -1016,7 +1017,7 @@ protected:
     scene->render(projection, view, viewPos);
 
 	// if game has started, render countdown time (Please render before Avatar)
-	if (started) {
+	if (bothstarted) {
 		int remain_time = client->call("remainTime").as<int>();
 		if (remain_time >= 0) {
 			renderText(textshader, std::to_string(remain_time), -0.25f, 0.6f, -0.7f, 0.015f, textcolor, projection, view);
@@ -1027,6 +1028,15 @@ protected:
 			ended = true;
 			victory = client->call("result").as<bool>();
 			result = channel->setPaused(true); // stop music
+		}
+	}
+	else if (started) {
+		renderText(textshader, "Waiting for opponent", -1.0f, 0.0f, -1.0f, 0.01f, textcolor, projection, view);
+		bothstarted = client->call("bothstarted").as<bool>();
+		if (bothstarted) {
+			scene->updateBombLeft(num_bomb_left);
+			//start playing music
+			result = system->playSound(sound_to_play, 0, false, &channel);
 		}
 	}
 	else if (ended) {
@@ -1050,7 +1060,7 @@ protected:
 	p.view = glm::mat4(view);
 	p.viewPos = glm::vec3(viewPos);
 	p = client->call("mirrorPos", p, isLeft).as<avatarPos>();
-	renderAvatar(p.view, projection, viewPos, true); // local viewPos?
+	renderAvatar(p.view, projection, p.viewPos, true); // local viewPos?
   }
 
   void startGame() override
@@ -1060,9 +1070,6 @@ protected:
 		  ended = false;
 		  client->call("startgame");
 		  num_bomb_left = 3;
-		  scene->updateBombLeft(num_bomb_left);
-		  //start playing music
-		  result = system->playSound(sound_to_play, 0, false, &channel);
 	  }
   }
   void createCube(glm::vec3 position, glm::vec3 scale) override
