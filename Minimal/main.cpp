@@ -750,7 +750,7 @@ protected:
       _sceneLayer.RenderPose[eye] = eyePoses[eye];
 
 	  glm::vec3 eyeWorld = _glmFromOvrVector(eyePoses[eye].Position); // for Avatar
-      renderScene(_eyeProjections[eye], ovr::toGlm(eyePoses[eye]), eyeWorld);
+      renderScene(_eyeProjections[eye], ovr::toGlm(eyePoses[eye]), eyeWorld, eye == ovrEye_Left);
     });
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
@@ -778,7 +778,7 @@ protected:
 	  }
   }
 
-  virtual void renderScene(const glm::mat4& projection, const glm::mat4& headPose, const glm::vec3& viewPos) = 0;
+  virtual void renderScene(const glm::mat4& projection, const glm::mat4& headPose, const glm::vec3& viewPos, bool isLeft) = 0;
   virtual void startGame() = 0;
   virtual void createCube(glm::vec3 position, glm::vec3 scale) = 0;
   virtual void createBomb(glm::vec3 position, float scale) = 0;
@@ -870,28 +870,30 @@ public:
 	  std::vector<glm::vec3> curr_bomb_pos;
 	  std::vector<glm::quat> curr_bomb_rot;
 	  for (int i = 0; i < num_cube; ++i) {
-		  vector3 one_cube_pos = client->call("getCubePos", i).as<vector3>();
-		  curr_cube_pos.push_back(one_cube_pos.vector);
-		  quaterion one_cube_rot = client->call("getCubeRot", i).as<quaterion>();
-		  curr_cube_rot.push_back(one_cube_rot.quaterion);
+		  vector3_10 ten_cube_pos = client->call("getCubePos", i).as<vector3_10>();
+		  quaterion_10 ten_cube_rot = client->call("getCubeRot", i).as<quaterion_10>();
+		  for (int j = 0; j < 10; ++j) {
+			  curr_cube_pos.push_back(ten_cube_pos.vector[j]);
+			  curr_cube_rot.push_back(ten_cube_rot.quaterion[j]);
+		  }
 	  }
 
 	  for (int i = 0; i < num_bomb; ++i) {
-		  vector3 one_bomb_pos = client->call("getBombPos", i).as<vector3>();
-		  curr_bomb_pos.push_back(one_bomb_pos.vector);
-		  quaterion one_bomb_rot = client->call("getBombRot", i).as<quaterion>();
-		  curr_bomb_rot.push_back(one_bomb_rot.quaterion);
+		  vector3_10 ten_bomb_pos = client->call("getBombPos", i).as<vector3_10>();
+		  quaterion_10 ten_bomb_rot = client->call("getBombRot", i).as<quaterion_10>();
+		  for (int j = 0; j < 10; ++j) {
+			  curr_bomb_pos.push_back(ten_bomb_pos.vector[j]);
+			  curr_bomb_rot.push_back(ten_bomb_rot.quaterion[j]);
+		  }
 	  }
-    // Render two cubes
+
 	  for (int i = 0; i < curr_cube_pos.size(); ++i)
 		{
-      // Scale to 20cm: 200cm * 0.1
 		  cube->toWorld = glm::translate(glm::mat4(1.0f), curr_cube_pos[i]) * glm::scale(glm::mat4(1.0f), glm::vec3(0.05f)) * glm::toMat4(curr_cube_rot[i]);
 		  cube->draw(shaderID, projection, view);
 		}
 	  for (int i = 0; i < curr_bomb_pos.size(); ++i)
 	  {
-		  // Scale to 20cm: 200cm * 0.1
 		  bomb->toWorld = glm::translate(glm::mat4(1.0f), curr_bomb_pos[i]) * glm::scale(glm::mat4(1.0f), glm::vec3(0.05f)) * glm::toMat4(curr_bomb_rot[i]);
 		  bomb->draw(shaderID1, projection, view);
 	  }
@@ -1007,7 +1009,7 @@ protected:
 
   }
 
-  void renderScene(const glm::mat4& projection, const glm::mat4& headPose, const glm::vec3& viewPos) override
+  void renderScene(const glm::mat4& projection, const glm::mat4& headPose, const glm::vec3& viewPos, bool isLeft) override
   {
 	glm::mat4 view = glm::inverse(headPose);
 
@@ -1047,9 +1049,8 @@ protected:
 	avatarPos p;
 	p.view = glm::mat4(view);
 	p.viewPos = glm::vec3(viewPos);
-	
-	p = client->call("mirrorPos", p).as<avatarPos>();
-	renderAvatar(p.view, projection, p.viewPos, true);
+	p = client->call("mirrorPos", p, isLeft).as<avatarPos>();
+	renderAvatar(p.view, projection, viewPos, true); // local viewPos?
   }
 
   void startGame() override
@@ -1135,7 +1136,7 @@ int main(int argc, char** argv)
 
   // Setup an rpc client that connects to "localhost:8080"
   rpc::client c("localhost", 8080);
-  std::cout << "Connected" << std::endl;
+  std::cout << "Client initialized" << std::endl;
 
   // testing program for rpc here
   string output = c.call("test").as<string>();
